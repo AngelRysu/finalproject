@@ -3,7 +3,7 @@ from typing import Set, Optional, Tuple
 from pdfminer.high_level import extract_text
 
 # Importar funciones y datos de utils.py
-from utils import extraer_palabras, calcular_coincidencias, cumple_umbral, stopwords
+from .utils import extraer_palabras, calcular_coincidencias, cumple_umbral, stopwords
 
 def procesar_pdf(archivo: str, carpeta: str, palabras_desc: Set[str], umbral: float) -> Optional[Tuple[str, Set[str], str]]:
     """
