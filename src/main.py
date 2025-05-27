@@ -1,64 +1,12 @@
 import os
-import re
 import shutil
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-from pdfminer.high_level import extract_text
 from concurrent.futures import ThreadPoolExecutor
-from typing import Set, Optional, Tuple
-
-# --- Stopwords en español e inglés ---
-stopwords_es = {
-    "el", "la", "los", "las", "de", "del", "a", "y", "o", "en", "con", "por", "para",
-    "un", "una", "unos", "unas", "que", "se", "es", "su", "al"
-}
-
-stopwords_en = {
-    "the", "and", "or", "in", "on", "for", "to", "a", "an", "of", "with", "is", "are",
-    "was", "were", "be", "this", "that", "it", "as"
-}
-
-stopwords = stopwords_es | stopwords_en
-
-# --- Funciones funcionales puras ---
-
-def extraer_palabras(texto: str, stopwords: Set[str]) -> Set[str]:
-    """Extrae palabras filtrando stopwords."""
-    palabras = re.findall(r'\b\w+\b', texto.lower())
-    return {p for p in palabras if p not in stopwords}
-
-def calcular_coincidencias(palabras_desc: Set[str], palabras_cv: Set[str]) -> Set[str]:
-    """Calcula las palabras coincidentes entre dos conjuntos."""
-    return palabras_desc & palabras_cv
-
-def cumple_umbral(coincidencias: Set[str], total: int, umbral: float) -> bool:
-    """Verifica si el número de coincidencias cumple con el umbral."""
-    if total == 0: # Evitar división por cero si no hay keywords en la descripción
-        return False
-    return len(coincidencias) / total >= umbral
-
-# --- Procesamiento concurrente ---
-
-def procesar_pdf(archivo: str, carpeta: str, palabras_desc: Set[str], umbral: float) -> Optional[Tuple[str, Set[str], str]]:
-    """
-    Procesa un archivo PDF, extrae su texto y calcula coincidencias con las palabras clave.
-    Retorna los datos del CV si cumple el umbral, None en caso contrario o error.
-    """
-    ruta_pdf = os.path.join(carpeta, archivo)
-    try:
-        texto_pdf = extract_text(ruta_pdf)
-        palabras_pdf = extraer_palabras(texto_pdf, stopwords)
-        coincidencias = calcular_coincidencias(palabras_desc, palabras_pdf)
-        
-        # total_keywords se calcula aquí dentro de procesar_pdf o se pasa como argumento.
-        # Ya que palabras_desc es constante para cada llamada, podemos usar su longitud.
-        total_keywords = len(palabras_desc) 
-
-        if cumple_umbral(coincidencias, total_keywords, umbral):
-            return archivo, coincidencias, texto_pdf
-    except Exception as e:
-        print(f"Error leyendo {archivo}: {e}")
-    return None
+from typing import Set
+# Importar funciones y datos de los otros módulos
+from utils import extraer_palabras, stopwords
+from pdf_processor import procesar_pdf
 
 # --- GUI y lógica principal ---
 
@@ -75,7 +23,7 @@ def mostrar_cv_resaltado(texto: str, coincidencias: Set[str], nombre: str):
     """
     ventana_cv = tk.Toplevel()
     ventana_cv.title(f"CV Coincidente - {nombre}")
-    ventana_cv.geometry("800x600") 
+    ventana_cv.geometry("800x600")
 
     text_frame = ttk.Frame(ventana_cv)
     text_frame.pack(expand=True, fill="both", padx=10, pady=10)
@@ -123,7 +71,7 @@ def filtrar_cvs():
     """
     descripcion = descripcion_text.get("1.0", tk.END).strip()
     carpeta = carpeta_entry.get()
-    
+
     try:
         umbral = float(umbral_slider.get()) / 100.0 # Obtener valor del slider y convertir a flotante
     except ValueError:
@@ -135,7 +83,7 @@ def filtrar_cvs():
         return
 
     palabras_desc = extraer_palabras(descripcion, stopwords)
-    
+
     if len(palabras_desc) == 0:
         messagebox.showwarning("Descripción vacía", "La descripción no contiene palabras clave válidas después de filtrar stopwords.")
         return
@@ -144,7 +92,7 @@ def filtrar_cvs():
     status_label.config(text="Procesando CVs, por favor espera...", foreground="blue")
     ventana.update_idletasks() # Actualizar la GUI inmediatamente para mostrar el mensaje
 
-    carpeta_filtrados = os.path.join(carpeta, "Filtrados_CVs") # Nombre de carpeta más descriptivo
+    carpeta_filtrados = os.path.join(carpeta, "Filtrados_CVs")
     os.makedirs(carpeta_filtrados, exist_ok=True)
 
     archivos = [f for f in os.listdir(carpeta) if f.lower().endswith(".pdf")]
@@ -155,7 +103,7 @@ def filtrar_cvs():
         return
 
     resultados_coincidentes = []
-    
+
     # Usar ThreadPoolExecutor para procesamiento concurrente
     with ThreadPoolExecutor() as executor:
         tareas = [executor.submit(procesar_pdf, archivo, carpeta, palabras_desc, umbral) for archivo in archivos]
@@ -163,7 +111,7 @@ def filtrar_cvs():
             resultado = tarea.result() # Esperar a que la tarea termine y obtener su resultado
             if resultado:
                 resultados_coincidentes.append(resultado)
-            
+
             # Actualizar progreso en la barra de estado
             status_label.config(text=f"Procesando: {i+1}/{len(archivos)} PDFs")
             ventana.update_idletasks() # Forzar la actualización de la GUI
@@ -190,11 +138,11 @@ def filtrar_cvs():
 
         for i, (archivo, coincidencias, texto_pdf) in enumerate(resultados_coincidentes):
             lista_cvs.insert(tk.END, f"{archivo} (Coincidencias: {len(coincidencias)})")
-            
+
             # Mover el archivo
             origen = os.path.join(carpeta, archivo)
             destino_base = os.path.join(carpeta_filtrados, archivo)
-            
+
             # Manejo de nombres de archivo duplicados
             destino = destino_base
             contador = 1
@@ -202,76 +150,76 @@ def filtrar_cvs():
                 nombre, ext = os.path.splitext(archivo)
                 destino = os.path.join(carpeta_filtrados, f"{nombre}_{contador}{ext}")
                 contador += 1
-            
+
             try:
                 shutil.move(origen, destino)
                 movidos += 1
             except Exception as e:
                 print(f"Error moviendo {origen} a {destino}: {e}")
                 messagebox.showerror("Error al mover archivo", f"No se pudo mover {archivo}: {e}")
-        
+
         # Vincular el evento de selección al Listbox solo después de llenarlo
-        lista_cvs.bind("<<ListboxSelect>>", 
+        lista_cvs.bind("<<ListboxSelect>>",
                         lambda event: on_cv_select(event, lista_cvs, resultados_coincidentes))
 
         ttk.Button(ventana_resultados, text="Cerrar", command=ventana_resultados.destroy).pack(pady=10)
     else:
         messagebox.showinfo("Filtrado completo", "No se encontraron CVs que cumplan con el umbral.")
-    
+
     status_label.config(text=f"Filtrado completo: Se movieron {movidos} CV(s) a '{os.path.basename(carpeta_filtrados)}'.", foreground="green")
 
 # --- Interfaz gráfica ---
 
-ventana = tk.Tk()
-ventana.title("Filtro de CVs por Descripción de Trabajo")
-ventana.geometry("700x600") 
-ventana.resizable(True, True) 
+if __name__ == "__main__":
+    ventana = tk.Tk()
+    ventana.title("Filtro de CVs por Descripción de Trabajo")
+    ventana.geometry("700x600")
+    ventana.resizable(True, True)
 
-# Estilo para los widgets ttk
-style = ttk.Style()
-style.theme_use("clam") # Un tema más moderno y plano
-style.configure("TButton", font=("Helvetica", 10), padding=6)
-style.configure("TLabel", font=("Helvetica", 10))
-style.configure("TEntry", font=("Helvetica", 10))
-style.configure("TScale", background=ventana.cget('bg')) # Para que el slider no tenga un fondo diferente
+    # Estilo para los widgets ttk
+    style = ttk.Style()
+    style.theme_use("clam")
+    style.configure("TButton", font=("Helvetica", 10), padding=6)
+    style.configure("TLabel", font=("Helvetica", 10))
+    style.configure("TEntry", font=("Helvetica", 10))
+    style.configure("TScale", background=ventana.cget('bg'))
 
-# Frame principal para organizar los elementos
-main_frame = ttk.Frame(ventana, padding="20 20 20 20")
-main_frame.pack(expand=True, fill="both")
+    # Frame principal para organizar los elementos
+    main_frame = ttk.Frame(ventana, padding="20 20 20 20")
+    main_frame.pack(expand=True, fill="both")
 
-# --- Descripción del trabajo ---
-ttk.Label(main_frame, text="1. Descripción del trabajo (palabras clave):").pack(anchor="w", pady=(0, 5))
-descripcion_text = tk.Text(main_frame, height=10, width=70, font=("Helvetica", 10), bd=1, relief="solid")
-descripcion_text.pack(fill="x", pady=(0, 10))
+    # --- Descripción del trabajo ---
+    ttk.Label(main_frame, text="1. Descripción del trabajo (palabras clave):").pack(anchor="w", pady=(0, 5))
+    descripcion_text = tk.Text(main_frame, height=10, width=70, font=("Helvetica", 10), bd=1, relief="solid")
+    descripcion_text.pack(fill="x", pady=(0, 10))
 
-# --- Carpeta de CVs ---
-ttk.Label(main_frame, text="2. Carpeta con los CVs (.pdf):").pack(anchor="w", pady=(0, 5))
-carpeta_frame = ttk.Frame(main_frame)
-carpeta_frame.pack(fill="x", pady=(0, 10))
+    # --- Carpeta de CVs ---
+    ttk.Label(main_frame, text="2. Carpeta con los CVs (.pdf):").pack(anchor="w", pady=(0, 5))
+    carpeta_frame = ttk.Frame(main_frame)
+    carpeta_frame.pack(fill="x", pady=(0, 10))
 
-carpeta_entry = ttk.Entry(carpeta_frame, width=60)
-carpeta_entry.pack(side=tk.LEFT, expand=True, fill="x")
-ttk.Button(carpeta_frame, text="Seleccionar Carpeta", command=seleccionar_carpeta).pack(side=tk.LEFT, padx=(5,0))
+    carpeta_entry = ttk.Entry(carpeta_frame, width=60)
+    carpeta_entry.pack(side=tk.LEFT, expand=True, fill="x")
+    ttk.Button(carpeta_frame, text="Seleccionar Carpeta", command=seleccionar_carpeta).pack(side=tk.LEFT, padx=(5,0))
 
-# --- Umbral de coincidencia ---
-ttk.Label(main_frame, text="3. Umbral de coincidencia (% de palabras clave):").pack(anchor="w", pady=(0, 5))
-umbral_frame = ttk.Frame(main_frame)
-umbral_frame.pack(fill="x", pady=(0, 10))
+    # --- Umbral de coincidencia ---
+    ttk.Label(main_frame, text="3. Umbral de coincidencia (% de palabras clave):").pack(anchor="w", pady=(0, 5))
+    umbral_frame = ttk.Frame(main_frame)
+    umbral_frame.pack(fill="x", pady=(0, 10))
 
-# ¡Corrección aquí! umbral_label se crea antes que umbral_slider
-umbral_label = ttk.Label(umbral_frame, text="40%")
-umbral_label.pack(side=tk.LEFT, padx=(10,0)) # Esto coloca el porcentaje a la derecha del slider inicialmente
+    umbral_label = ttk.Label(umbral_frame, text="40%")
+    umbral_label.pack(side=tk.LEFT, padx=(10,0)) # Esto coloca el porcentaje a la derecha del slider inicialmente
 
-umbral_slider = ttk.Scale(umbral_frame, from_=10, to=100, orient="horizontal", command=lambda s: umbral_label.config(text=f"{int(float(s))}%"))
-umbral_slider.set(40) # Valor inicial del 40%
-umbral_slider.pack(side=tk.LEFT, expand=True, fill="x") # Esto coloca el slider a la izquierda
+    umbral_slider = ttk.Scale(umbral_frame, from_=10, to=100, orient="horizontal", command=lambda s: umbral_label.config(text=f"{int(float(s))}%"))
+    umbral_slider.set(40) # Valor inicial del 40%
+    umbral_slider.pack(side=tk.LEFT, expand=True, fill="x") # Esto coloca el slider a la izquierda
 
-# --- Botón de Filtrar ---
-filtrar_button = ttk.Button(main_frame, text="Filtrar CVs", command=filtrar_cvs, style="TButton")
-filtrar_button.pack(pady=20)
+    # --- Botón de Filtrar ---
+    filtrar_button = ttk.Button(main_frame, text="Filtrar CVs", command=filtrar_cvs, style="TButton")
+    filtrar_button.pack(pady=20)
 
-# --- Barra de estado ---
-status_label = ttk.Label(main_frame, text="Listo", font=("Helvetica", 10, "italic"))
-status_label.pack(pady=(0, 10))
+    # --- Barra de estado ---
+    status_label = ttk.Label(main_frame, text="Listo", font=("Helvetica", 10, "italic"))
+    status_label.pack(pady=(0, 10))
 
-ventana.mainloop()
+    ventana.mainloop()
