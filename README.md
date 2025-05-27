@@ -162,11 +162,6 @@ finalproject/
 
 ## ✍️ Autores <a name = "authors"></a>
 
-* **Jesús Ángel Quezada Camacho** - [Tu perfil de GitHub](https://github.com/AngelRysu) - Desarrollador principal.
-
-## 🎉 Agradecimientos <a name = "agradecimientos"></a>
-
-* A la comunidad de Python y los desarrolladores de `pdfminer.six` por sus herramientas y recursos.
-* [Añade cualquier otra persona o recurso que quieras agradecer]
+* **Jesús Ángel Quezada Camacho** - [Perfil](https://github.com/AngelRysu) - Desarrollador principal.
 
 ---
